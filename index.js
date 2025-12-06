@@ -35,6 +35,13 @@ async function run() {
     const booksCollection = database.collection("books");
 
     
+    
+    // GET: Read all users
+    app.get('/users', async (req, res) => {
+      const cursor = userCollection.find();
+      const result = await cursor.toArray();
+      res.send(result);
+    });
     app.post('/users', async (req, res) => {
       const newUser = req.body;
       const query = { email: newUser.email };
@@ -45,20 +52,9 @@ async function run() {
       const result = await userCollection.insertOne(newUser);
       res.send(result);
     });
-    // GET: Read all users
-    app.get('/users', async (req, res) => {
-      const cursor = userCollection.find();
-      const result = await cursor.toArray();
-      res.send(result);
-    });
-    app.post('/users', async (req, res) => {
-      const newUser = req.body;
-      const result = await userCollection.insertOne(newUser);
-      res.send(result);
-    });
     //Books
     app.get('/books', async (req, res) => {
-      const cursor = booksCollection.find();
+      const cursor = booksCollection.find().sort({ rating: -1 });
       const result = await cursor.toArray();
       res.send(result);
     });
