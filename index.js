@@ -1,7 +1,7 @@
 import dotenv from 'dotenv';
 import express from 'express';
 import cors from 'cors';
-import { MongoClient, ServerApiVersion } from 'mongodb';
+import { MongoClient, ObjectId, ServerApiVersion } from 'mongodb';
 
 dotenv.config();
 
@@ -30,8 +30,9 @@ async function run() {
     const userCollection = database.collection("users");
     const booksCollection = database.collection("books");
 
+    //USER Section
     // GET all users
-    app.get('/users', async (_, res) => {
+    app.get('/users', async (req, res) => {
       const result = await userCollection.find().toArray();
       res.send(result);
     });
@@ -66,19 +67,36 @@ async function run() {
         console.error("POST /users error:", error);
         res.status(500).send({ message: "Internal server error" });
       }
-    });
+    })
+    //User Ends here
 
-    // GET books
-    app.get('/books', async (_, res) => {
-      const result = await booksCollection.find().sort({ rating: -1 }).toArray();
+
+    //BOOK Section 
+    // GET All Books
+    app.get('/books', async (req, res) => {
+      const result = await booksCollection.find().sort({ price_USD: -1 }).toArray();
       res.send(result);
     });
-
-    // Add new book
+    // Add New Book
     app.post('/books', async (req, res) => {
       const result = await booksCollection.insertOne(req.body);
       res.send(result);
     });
+
+    app.delete('/books/:id', async (req, res) => {
+      try {
+        const id = req.params.id;
+        const query = { _id: new ObjectId(id) };
+        const result = await booksCollection.deleteOne(query);
+        if (result.deletedCount === 0) {
+          return res.status(404).send({ message: "Book Not Found" })
+        }
+        res.send(result)
+      } catch (err) {
+        console.error("Error deleting book:", err);
+        res.status(500).send({ message: "Error deleting book" });
+      }
+    })
 
   } catch (err) {
     console.error(err);
@@ -87,7 +105,7 @@ async function run() {
 
 run().catch(console.dir);
 
-app.get('/', (_, res) => {
+app.get('/', (req, res) => {
   res.send("Server Running");
 });
 
