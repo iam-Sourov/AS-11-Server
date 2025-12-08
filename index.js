@@ -69,6 +69,25 @@ async function run() {
         res.status(500).send({ message: "Internal server error" });
       }
     });
+    //UPDATE user
+    app.patch('/users/update/:email', async (req, res) => {
+      try {
+        const email = req.params.email;
+        const userUpdates = req.body;
+        const filter = { email: email };
+        const updateDoc = {
+          $set: {
+            name: userUpdates.name,
+            photoURL: userUpdates.photoURL
+          }
+        };
+        const result = await userCollection.updateOne(filter, updateDoc);
+        res.send(result);
+      } catch (error) {
+        console.error("Error updating user:", error);
+        res.status(500).send({ message: "Failed to update user" });
+      }
+    });
 
 
     // BOOK ROUTES
@@ -106,7 +125,8 @@ async function run() {
       const query = {};
       const { email } = req.query;
       if (email) query.email = email;
-      const result = await ordersCollection.find(query).toArray();
+      const options = { sort: { price: -1 } }
+      const result = await ordersCollection.find(query, options).toArray();
       res.send(result);
     });
     // POST place order
