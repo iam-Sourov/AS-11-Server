@@ -29,6 +29,7 @@ async function run() {
     const database = client.db("myDB");
     const userCollection = database.collection("users");
     const booksCollection = database.collection("books");
+    const ordersCollection = database.collection("orders");
 
     //USER Section
     // GET all users
@@ -70,16 +71,17 @@ async function run() {
     })
     //User Ends here
 
-
     //BOOK Section 
     // GET All Books
     app.get('/books', async (req, res) => {
       const result = await booksCollection.find().sort({ price_USD: -1 }).toArray();
       res.send(result);
     });
+
     // Add New Book
     app.post('/books', async (req, res) => {
-      const result = await booksCollection.insertOne(req.body);
+      const newBook = req.body
+      const result = await booksCollection.insertOne(newBook);
       res.send(result);
     });
 
@@ -96,13 +98,32 @@ async function run() {
         console.error("Error deleting book:", err);
         res.status(500).send({ message: "Error deleting book" });
       }
-    })
+    });
 
+    // Order Section
+    //Order GET
+    app.get('/orders', async (req, res) => {
+      const result = await ordersCollection.find().toArray();
+      res.send(result)
+    })
+    //Order POST
+    app.post('/orders', async (req, res) => {
+      const newOrder = req.body;
+      const exists = await ordersCollection.findOne({ bookId: newOrder.bookId, email: newOrder.email });
+      if (exists) {
+        return res.send({
+          message: "You have already ordered this book",
+          insertedId: null
+        });
+      }
+      const result = await ordersCollection.insertOne(newOrder);
+      res.send(result)
+    })
   } catch (err) {
-    console.error(err);
+    console.error("Already Ordered The Book:", err);
+    res.status(500).send({ message: "Already Ordered The Book" });
   }
 }
-
 run().catch(console.dir);
 
 app.get('/', (req, res) => {
