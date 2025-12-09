@@ -105,14 +105,20 @@ async function run() {
       }
     });
 
-
     // BOOK ROUTES
     // GET all books
     app.get('/books', async (req, res) => {
       const result = await booksCollection.find().sort({ price_USD: -1 }).toArray();
       res.send(result);
     });
-    // POST add new book
+    //Get books by User
+    app.get('/books/:email', async (req, res) => {
+      const email = req.params.email;
+      const query = { email: email };
+      const result = await ordersCollection.find(query).sort({ date: -1 }).toArray();
+      res.send(result);
+    });
+    // POST add a new book
     app.post('/books', async (req, res) => {
       const newBook = req.body;
       const result = await booksCollection.insertOne(newBook);
@@ -176,7 +182,6 @@ async function run() {
         res.status(500).send({ message: "Internal Server Error" });
       }
     });
-
     // CANCEL ORDER
     app.patch('/orders/cancel/:id', async (req, res) => {
       try {
@@ -212,7 +217,6 @@ async function run() {
         const pendingOrders = await ordersCollection.countDocuments({ status: "pending" });
         const cancelledOrders = await ordersCollection.countDocuments({ status: "cancelled" });
         const completedOrders = await ordersCollection.countDocuments({ status: "completed" });
-
         res.send({
           totalUsers,
           admins,
