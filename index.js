@@ -88,6 +88,22 @@ async function run() {
         res.status(500).send({ message: "Failed to update user" });
       }
     });
+    //Patch Role
+    app.patch('/users/:id', async (req, res) => {
+      try {
+        const userId = req.params.id;
+        const updates = req.body;
+        const id = { _id: new ObjectId(userId) };
+        const updateDoc = {
+          $set: updates
+        };
+        const result = await userCollection.updateOne(id, updateDoc);
+        res.send(result);
+      } catch (error) {
+        console.error("Error updating user:", error);
+        res.status(500).send({ message: "Failed to update user" });
+      }
+    });
 
 
     // BOOK ROUTES
@@ -184,7 +200,35 @@ async function run() {
         res.status(500).send({ message: "Internal Server Error" });
       }
     });
+    //Stats
+    app.get('/stats', async (req, res) => {
+      try {
+        const totalUsers = await userCollection.countDocuments();
+        const admins = await userCollection.countDocuments({ role: "admin" });
+        const librarians = await userCollection.countDocuments({ role: "librarian" });
+        const users = await userCollection.countDocuments({ role: "user" });
+        const books = await booksCollection.countDocuments();
+        const totalOrders = await ordersCollection.countDocuments();
+        const pendingOrders = await ordersCollection.countDocuments({ status: "pending" });
+        const cancelledOrders = await ordersCollection.countDocuments({ status: "cancelled" });
+        const completedOrders = await ordersCollection.countDocuments({ status: "completed" });
 
+        res.send({
+          totalUsers,
+          admins,
+          librarians,
+          users,
+          books,
+          totalOrders,
+          pendingOrders,
+          cancelledOrders,
+          completedOrders
+        });
+      } catch (error) {
+        console.error("Stats API Error:", error);
+        res.status(500).send({ message: "Failed to load admin stats" });
+      }
+    });
   } catch (err) {
     console.error("Server Error:", err);
   }
