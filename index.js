@@ -212,7 +212,7 @@ async function run() {
             userEmail: orderInfo.email
           },
 
-          success_url: `${process.env.SITE_DOMAIN}/dashboard/payment-success?session_id={CHECKOUT_SESSION_ID}}`,
+          success_url: `${process.env.SITE_DOMAIN}/dashboard/payment-success?session_id={CHECKOUT_SESSION_ID}`,
           cancel_url: `${process.env.SITE_DOMAIN}/dashboard/payment-cancel`
         });
         res.send({ url: session.url });
@@ -220,6 +220,37 @@ async function run() {
         console.error(error);
         res.status(500).send({ message: "Stripe session failed" });
       }
+    });
+
+    app.patch('/payment-success', async (req, res) => {
+      const session_id = req.query.session_id;
+      const session = await stripe.checkout.sessions.retrieve(session_id);
+
+      if (session.payment_status === 'paid') {
+        const id = session.metadata.orderId
+        const transactionId = session.payment_intent
+        const query = { _id: new ObjectId(id) }
+        const update = {
+          $set: {
+            payment_status: 'paid',
+            transactionId: transactionId,
+            paymentDate: new Date()
+
+          }
+        }
+        const result = ordersCollection.updateOne(query, update)
+        res.send(result)
+      }
+      res.send({ success: false })
+    })
+    app.get('/payments', async (req, res) => {
+      const email = req.query.email;
+      const query = {
+        email: email,
+        payment_status: 'paid'
+      };
+      const result = await ordersCollection.find(query).toArray();
+      res.send(result);
     });
 
     app.get('/orders/:id', async (req, res) => {
