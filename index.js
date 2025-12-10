@@ -1,6 +1,8 @@
+require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
-require('dotenv').config();
+const stripe = require('stripe')(process.env.STRIPE_SECRET_KEY);
+console.log("Stripe Key Check:", process.env.STRIPE_SECRET_KEY);
 const { MongoClient, ObjectId, ServerApiVersion } = require('mongodb');
 const admin = require("firebase-admin");
 
@@ -182,6 +184,51 @@ async function run() {
       const result = await ordersCollection.find(query, options).toArray();
       res.send(result);
     });
+    //PAYMENT CHECKOUT
+    app.post('/payment-checkout-session', async (req, res) => {
+      const orderInfo = req.body;
+      const price = parseInt(orderInfo.price) * 100;
+      try {
+        const session = await stripe.checkout.sessions.create({
+          payment_method_types: ['card'],
+          line_items: [
+            {
+              price_data: {
+                currency: 'usd',
+                product_data: {
+                  name: orderInfo.bookTitle,
+                  images: [orderInfo.image]
+                },
+                unit_amount: price
+              },
+              quantity: 1
+            }
+          ],
+
+          customer_email: orderInfo.email,
+          mode: 'payment',
+          metadata: {
+            orderId: orderInfo._id.toString(),
+            userEmail: orderInfo.email
+          },
+
+          success_url: `${process.env.SITE_DOMAIN}/dashboard/payment-success?session_id={CHECKOUT_SESSION_ID}}`,
+          cancel_url: `${process.env.SITE_DOMAIN}/dashboard/payment-cancel`
+        });
+        res.send({ url: session.url });
+      } catch (error) {
+        console.error(error);
+        res.status(500).send({ message: "Stripe session failed" });
+      }
+    });
+
+    app.get('/orders/:id', async (req, res) => {
+      const id = req.params.id;
+      const query = { _id: new ObjectId(id) };
+      const result = await ordersCollection.findOne(query);
+      res.send(result);
+    });
+
 
     app.post('/orders', verifyFireBaseToken, async (req, res) => {
       const newOrder = req.body;
