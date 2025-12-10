@@ -1,8 +1,8 @@
-import dotenv from 'dotenv';
-import express from 'express';
-import cors from 'cors';
-import { MongoClient, ObjectId, ServerApiVersion } from 'mongodb';
-dotenv.config();
+const express = require('express');
+const cors = require('cors');
+require('dotenv').config();
+const { MongoClient, ObjectId, ServerApiVersion } = require('mongodb');
+const admin = require("firebase-admin");
 
 const app = express();
 const port = process.env.PORT || 5000;
@@ -10,7 +10,28 @@ const port = process.env.PORT || 5000;
 app.use(cors());
 app.use(express.json());
 
+// --- FIREBASE SETUP ---
+const serviceAccount = require("./firebase-adminsdk.json");
+admin.initializeApp({
+  credential: admin.credential.cert(serviceAccount)
+});
 
+const verifyFireBaseToken = async (req, res, next) => {
+  const token = req.headers.authorization;
+  if (!token) {
+    return res.status(401).send({ message: 'unauthorized access' });
+  }
+  try {
+    const idToken = token.split(' ')[1];
+    const decoded = await admin.auth().verifyIdToken(idToken);
+    req.decoded_email = decoded.email;
+    next();
+  } catch (error) {
+    return res.status(403).send({ message: 'Forbidden access' });
+  }
+};
+
+// --- MONGODB SETUP ---
 const uri = `mongodb+srv://${process.env.DB_USERNAME}:${process.env.DB_PASSWORD}@mystic.fupfbwc.mongodb.net/?appName=Mystic`;
 
 const client = new MongoClient(uri, {
@@ -30,14 +51,13 @@ async function run() {
     const booksCollection = database.collection("books");
     const ordersCollection = database.collection("orders");
 
+    // --- USER ROUTES ---
 
-    // USER ROUTES
-    // GET all users
-    app.get('/users', async (req, res) => {
+    app.get('/users', verifyFireBaseToken, async (req, res) => {
       const result = await userCollection.find().toArray();
       res.send(result);
     });
-    // GET user role by email
+
     app.get('/users/role/:email', async (req, res) => {
       try {
         const email = req.params.email;
@@ -47,166 +67,169 @@ async function run() {
         }
         res.send({ role: user.role || "user" });
       } catch (error) {
-        console.error("Role API Error:", error);
         res.status(500).send({ message: "Internal Server Error" });
       }
     });
-    // POST new user
+
     app.post("/users", async (req, res) => {
       try {
         const newUser = req.body;
         const exists = await userCollection.findOne({ email: newUser.email });
         if (exists) {
-          return res.send({
-            message: "User already exists",
-            insertedId: null,
-          });
+          return res.send({ message: "User already exists", insertedId: null });
         }
         const result = await userCollection.insertOne(newUser);
         res.send(result);
       } catch (error) {
-        console.error("POST /users error:", error);
         res.status(500).send({ message: "Internal server error" });
       }
     });
-    //UPDATE user
-    app.patch('/users/update/:email', async (req, res) => {
-      try {
-        const email = req.params.email;
-        const userUpdates = req.body;
-        const filter = { email: email };
-        const updateDoc = {
-          $set: {
-            name: userUpdates.name,
-            photoURL: userUpdates.photoURL
-          }
-        };
-        const result = await userCollection.updateOne(filter, updateDoc);
-        res.send(result);
-      } catch (error) {
-        console.error("Error updating user:", error);
-        res.status(500).send({ message: "Failed to update user" });
+
+    app.patch('/users/update/:email', verifyFireBaseToken, async (req, res) => {
+      const email = req.params.email;
+      if (req.decoded_email !== email) {
+        return res.status(403).send({ message: 'Forbidden access' });
       }
-    });
-    //Patch Role
-    app.patch('/users/:id', async (req, res) => {
-      try {
-        const userId = req.params.id;
-        const updates = req.body;
-        const id = { _id: new ObjectId(userId) };
-        const updateDoc = {
-          $set: updates
-        };
-        const result = await userCollection.updateOne(id, updateDoc);
-        res.send(result);
-      } catch (error) {
-        console.error("Error updating user:", error);
-        res.status(500).send({ message: "Failed to update user" });
-      }
+      const userUpdates = req.body;
+      const filter = { email: email };
+      const updateDoc = {
+        $set: {
+          name: userUpdates.name,
+          photoURL: userUpdates.photoURL
+        }
+      };
+      const result = await userCollection.updateOne(filter, updateDoc);
+      res.send(result);
     });
 
-    // BOOK ROUTES
-    // GET all books
+    app.patch('/users/:id', verifyFireBaseToken, async (req, res) => {
+      const userId = req.params.id;
+      const updates = req.body;
+      const id = { _id: new ObjectId(userId) };
+      const updateDoc = { $set: updates };
+      const result = await userCollection.updateOne(id, updateDoc);
+      res.send(result);
+    });
+
+    // --- BOOK ROUTES ---
     app.get('/books', async (req, res) => {
       const result = await booksCollection.find().sort({ price_USD: -1 }).toArray();
       res.send(result);
     });
-    //Get books by User
-    app.get('/books/:email', async (req, res) => {
-      const email = req.params.email;
-      const query = { email: email };
-      const result = await ordersCollection.find(query).sort({ date: -1 }).toArray();
-      res.send(result);
-    });
-    // POST add a new book
-    app.post('/books', async (req, res) => {
-      const newBook = req.body;
-      const result = await booksCollection.insertOne(newBook);
-      res.send(result);
-    });
-    // DELETE book by ID
-    app.delete('/books/:id', async (req, res) => {
+
+    app.get('/books/:author', async (req, res) => {
       try {
-        const id = req.params.id;
-        const query = { _id: new ObjectId(id) };
-        const result = await booksCollection.deleteOne(query);
-        if (result.deletedCount === 0) {
-          return res.status(404).send({ message: "Book Not Found" });
-        }
+        const authorName = req.params.author;
+        const query = { author: authorName };
+        const result = await booksCollection.find(query).sort({ date: -1 }).toArray();
         res.send(result);
       } catch (error) {
-        console.error("Error deleting book:", error);
-        res.status(500).send({ message: "Error deleting book" });
+        res.status(500).send({ message: "Error fetching books" });
       }
     });
 
+    app.post('/books', verifyFireBaseToken, async (req, res) => {
+      const newBook = req.body;
+      newBook.added_date = new Date();
+      const result = await booksCollection.insertOne(newBook);
+      res.send(result);
+    });
 
-    //ORDER ROUTES
-    // GET orders by email
-    app.get('/orders', async (req, res) => {
+    app.delete('/books/:id', verifyFireBaseToken, async (req, res) => {
+      const id = req.params.id;
+      const query = { _id: new ObjectId(id) };
+      const result = await booksCollection.deleteOne(query);
+      if (result.deletedCount === 0) {
+        return res.status(404).send({ message: "Book Not Found" });
+      }
+      res.send(result);
+    });
+
+    app.patch('/books/:id', verifyFireBaseToken, async (req, res) => {
+      try {
+        const id = req.params.id;
+        const filter = { _id: new ObjectId(id) };
+        const updatedBook = req.body;
+
+        const updateDoc = {
+          $set: {
+            title: updatedBook.title,
+            price: updatedBook.price,
+            image: updatedBook.image_url,
+            status: updatedBook.status,
+            author: updatedBook.author,
+            category: updatedBook.category,
+            description: updatedBook.description,
+            rating: updatedBook.rating
+          }
+        };
+        const result = await booksCollection.updateOne(filter, updateDoc);
+        res.send(result);
+      } catch (error) {
+        res.status(500).send({ message: "Failed to update book" });
+      }
+    });
+
+    // --- ORDER ROUTES ---
+    app.get('/orders', verifyFireBaseToken, async (req, res) => {
       const query = {};
       const { email } = req.query;
+      if (email && req.decoded_email !== email) {
+        return res.status(403).send({ message: 'Forbidden access' });
+      }
       if (email) query.email = email;
-      const options = { sort: { price: -1 } }
+      const options = { sort: { price: -1 } };
       const result = await ordersCollection.find(query, options).toArray();
       res.send(result);
     });
-    // POST place order
-    app.post('/orders', async (req, res) => {
+
+    app.post('/orders', verifyFireBaseToken, async (req, res) => {
       const newOrder = req.body;
+      if (req.decoded_email !== newOrder.email) {
+        return res.status(403).send({ message: 'Forbidden access' });
+      }
       const exists = await ordersCollection.findOne({
         bookId: newOrder.bookId,
         email: newOrder.email,
       });
       if (exists) {
-        return res.send({
-          message: "You have already ordered this book",
-          insertedId: null,
-        });
+        return res.send({ message: "You have already ordered this book", insertedId: null });
       }
       const result = await ordersCollection.insertOne(newOrder);
       res.send(result);
     });
-    // DELETE order by ID
-    app.delete('/orders/:id', async (req, res) => {
-      try {
-        const id = req.params.id;
-        const query = { _id: new ObjectId(id) };
-        const result = await ordersCollection.deleteOne(query);
-        if (result.deletedCount === 0) {
-          return res.status(404).send({ message: "Order Not Found" });
-        }
-        res.send({ message: "Order Deleted Successfully", deletedId: id });
-      } catch (error) {
-        console.error("Error deleting order:", error);
-        res.status(500).send({ message: "Internal Server Error" });
+
+    app.delete('/orders/:id', verifyFireBaseToken, async (req, res) => {
+      const id = req.params.id;
+      const query = { _id: new ObjectId(id) };
+      const result = await ordersCollection.deleteOne(query);
+      if (result.deletedCount === 0) {
+        return res.status(404).send({ message: "Order Not Found" });
       }
+      res.send({ message: "Order Deleted Successfully", deletedId: id });
     });
-    // CANCEL ORDER
-    app.patch('/orders/cancel/:id', async (req, res) => {
-      try {
-        const id = req.params.id;
-        const order = await ordersCollection.findOne({ _id: new ObjectId(id) });
-        if (!order) {
-          return res.status(404).send({ message: "Order not found" });
-        }
-        if (order.status !== 'pending') {
-          return res
-            .status(400)
-            .send({ message: "Only pending orders can be cancelled" });
-        }
-        const result = await ordersCollection.updateOne(
-          { _id: new ObjectId(id) },
-          { $set: { status: 'cancelled' } }
-        );
-        res.send({ message: "Order cancelled successfully" });
-      } catch (err) {
-        console.error("Cancel Order Error:", err);
-        res.status(500).send({ message: "Internal Server Error" });
+
+    app.patch('/orders/cancel/:id', verifyFireBaseToken, async (req, res) => {
+      const id = req.params.id;
+      const order = await ordersCollection.findOne({ _id: new ObjectId(id) });
+      if (!order) {
+        return res.status(404).send({ message: "Order not found" });
       }
+      if (req.decoded_email !== order.email) {
+        return res.status(403).send({ message: 'Forbidden access' });
+      }
+      if (order.status !== 'pending') {
+        return res.status(400).send({ message: "Only pending orders can be cancelled" });
+      }
+      const result = await ordersCollection.updateOne(
+        { _id: new ObjectId(id) },
+        { $set: { status: 'cancelled' } }
+      );
+      res.send({ message: "Order cancelled successfully" });
     });
-    //Stats
-    app.get('/stats', async (req, res) => {
+
+    // --- STATS ---
+    app.get('/stats', verifyFireBaseToken, async (req, res) => {
       try {
         const totalUsers = await userCollection.countDocuments();
         const admins = await userCollection.countDocuments({ role: "admin" });
@@ -218,21 +241,13 @@ async function run() {
         const cancelledOrders = await ordersCollection.countDocuments({ status: "cancelled" });
         const completedOrders = await ordersCollection.countDocuments({ status: "completed" });
         res.send({
-          totalUsers,
-          admins,
-          librarians,
-          users,
-          books,
-          totalOrders,
-          pendingOrders,
-          cancelledOrders,
-          completedOrders
+          totalUsers, admins, librarians, users, books, totalOrders, pendingOrders, cancelledOrders, completedOrders
         });
       } catch (error) {
-        console.error("Stats API Error:", error);
         res.status(500).send({ message: "Failed to load admin stats" });
       }
     });
+
   } catch (err) {
     console.error("Server Error:", err);
   }
