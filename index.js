@@ -11,9 +11,18 @@ const port = process.env.PORT || 5000;
 app.use(cors());
 app.use(express.json());
 
+// --- MONGODB SETUP ---
+const uri = `mongodb+srv://${process.env.DB_USERNAME}:${process.env.DB_PASSWORD}@mystic.fupfbwc.mongodb.net/?appName=Mystic`;
+
+const client = new MongoClient(uri, {
+  serverApi: {
+    version: ServerApiVersion.v1,
+    strict: true,
+    deprecationErrors: true,
+  },
+});
 // --- FIREBASE SETUP --- 
 // const serviceAccount = require("./firebase-admin-key.json");
-
 const decoded = Buffer.from(process.env.FB_SERVICE_KEY, 'base64').toString('utf8')
 const serviceAccount = JSON.parse(decoded);
 admin.initializeApp({
@@ -35,16 +44,6 @@ const verifyFireBaseToken = async (req, res, next) => {
   }
 };
 
-// --- MONGODB SETUP ---
-const uri = `mongodb+srv://${process.env.DB_USERNAME}:${process.env.DB_PASSWORD}@mystic.fupfbwc.mongodb.net/?appName=Mystic`;
-
-const client = new MongoClient(uri, {
-  serverApi: {
-    version: ServerApiVersion.v1,
-    strict: true,
-    deprecationErrors: true,
-  },
-});
 
 async function run() {
   try {
@@ -252,7 +251,7 @@ async function run() {
 
           }
         }
-        const result = ordersCollection.updateOne(query, update)
+        const result = await ordersCollection.updateOne(query, update)
         res.send(result)
       }
       res.send({ success: false })
@@ -324,9 +323,6 @@ async function run() {
     app.get('/librarian-orders/:author', verifyFireBaseToken, async (req, res) => {
       try {
         const author = req.params.author;
-        if (!req.decoded_email) {
-          return res.status(401).send({ message: "Unauthorized" });
-        }
         const query = { author: author };
 
         const result = await ordersCollection.find(query).sort({ date: -1 }).toArray();
@@ -361,7 +357,7 @@ async function run() {
         const totalOrders = await ordersCollection.countDocuments();
         const pendingOrders = await ordersCollection.countDocuments({ status: "pending" });
         const cancelledOrders = await ordersCollection.countDocuments({ status: "cancelled" });
-        const completedOrders = await ordersCollection.countDocuments({ status: "completed" });
+        const completedOrders = await ordersCollection.countDocuments({ status: "delivered" });
         res.send({
           totalUsers, admins, librarians, users, books, totalOrders, pendingOrders, cancelledOrders, completedOrders
         });
@@ -370,17 +366,18 @@ async function run() {
       }
     });
 
-  } catch (err) {
-    console.error("Server Error:", err);
+  } finally {
+    //
   }
 }
-
-run().catch(console.dir);
 
 app.get('/', (req, res) => {
   res.send("Server Running");
 });
 
+run().catch(console.dir);
+
+
 app.listen(port, () => {
-  console.log(`🚀 Server running on port ${port}`);
+  console.log(` Server running on port ${port}`);
 });
