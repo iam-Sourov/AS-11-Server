@@ -153,25 +153,36 @@ async function run() {
       try {
         const id = req.params.id;
         const filter = { _id: new ObjectId(id) };
-        const updatedBook = req.body;
-
-        const updateDoc = {
-          $set: {
-            title: updatedBook.title,
-            price: updatedBook.price,
-            image: updatedBook.image_url,
-            status: updatedBook.status,
-            author: updatedBook.author,
-            category: updatedBook.category,
-            description: updatedBook.description,
-            rating: updatedBook.rating
-          }
-        };
+        const cleanData = Object.fromEntries(
+          Object.entries(req.body).filter(([_, value]) => value !== undefined)
+        );
+        const updateDoc = { $set: cleanData };
         const result = await booksCollection.updateOne(filter, updateDoc);
         res.send(result);
       } catch (error) {
+        console.error(error);
         res.status(500).send({ message: "Failed to update book" });
       }
+    });
+
+    app.patch("/books/status/:id", verifyFireBaseToken, async (req, res) => {
+      const id = req.params.id;
+      const status = req.body;
+      const query = { _id: new ObjectId(id) }
+      const book = await booksCollection.findOne(query);
+
+      if (!book) {
+        return res.status(404).send({ message: "Book not found" });
+      }
+      if (req.decoded_email !== book.author) {
+        return res.status(403).send({ message: "Forbidden access" });
+      }
+      const result = await booksCollection.updateOne(
+        { _id: new ObjectId(id) },
+        { $set: { status: status } }
+      );
+
+      res.send(result);
     });
 
     // --- ORDER ROUTES ---
