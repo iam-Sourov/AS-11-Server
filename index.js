@@ -12,8 +12,6 @@ app.use(cors());
 app.use(express.json());
 
 // --- FIREBASE SETUP --- 
-// const serviceAccount = require("./firebase-admin-key.json");
-
 const decoded = Buffer.from(process.env.FB_SERVICE_KEY, 'base64').toString('utf8')
 const serviceAccount = JSON.parse(decoded);
 admin.initializeApp({
@@ -358,17 +356,17 @@ async function run() {
       }
     });
 
-  } catch (err) {
-    console.error("Server Error:", err);
+  } finally {
+
   }
 }
 
 run().catch(console.dir);
 
 app.get('/', (req, res) => {
-  res.send("Server Running");
-});
+  res.send('zap is shifting shifting!')
+})
 
 app.listen(port, () => {
-  console.log(`🚀 Server running on port ${port}`);
-});
+  console.log(`Example app listening on port ${port}`)
+})
