@@ -13,6 +13,7 @@ app.use(express.json());
 
 // --- FIREBASE SETUP --- 
 const decoded = Buffer.from(process.env.FB_SERVICE_KEY, 'base64').toString('utf8')
+console.log(decoded)
 const serviceAccount = JSON.parse(decoded);
 admin.initializeApp({
   credential: admin.credential.cert(serviceAccount)
@@ -364,7 +365,7 @@ async function run() {
 run().catch(console.dir);
 
 app.get('/', (req, res) => {
-  res.send('zap is shifting shifting!')
+  res.send('Server IS Deployed!')
 })
 
 app.listen(port, () => {
