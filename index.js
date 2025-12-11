@@ -226,7 +226,8 @@ async function run() {
           },
 
           success_url: `${process.env.SITE_DOMAIN}/dashboard/payment-success?session_id={CHECKOUT_SESSION_ID}`,
-          cancel_url: `${process.env.SITE_DOMAIN}/dashboard/payment-cancel`
+          cancel_url: `${process.env.SITE_DOMAIN}/dashboard/payment-cancel`,
+
         });
         res.send({ url: session.url });
       } catch (error) {
