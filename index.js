@@ -1,9 +1,10 @@
+// index.js
 require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
-const stripe = require('stripe')(process.env.STRIPE_SECRET_KEY);
+const stripe = require('stripe')(process.env.STRIPE_SECRET_KEY || '');
 const { MongoClient, ObjectId, ServerApiVersion } = require('mongodb');
-const admin = require("firebase-admin");
+const admin = require('firebase-admin');
 
 const app = express();
 const port = process.env.PORT || 5000;
@@ -11,18 +12,48 @@ const port = process.env.PORT || 5000;
 app.use(cors());
 app.use(express.json());
 
-// --- FIREBASE SETUP --- 
-const decoded = Buffer.from(process.env.FB_SERVICE_KEY, 'base64').toString('utf8')
-console.log(decoded)
-const serviceAccount = JSON.parse(decoded);
-admin.initializeApp({
-  credential: admin.credential.cert(serviceAccount)
-});
 
+const requiredEnvs = [
+  'FB_SERVICE_KEY', 
+  'DB_USERNAME',
+  'DB_PASSWORD',
+  'STRIPE_SECRET_KEY',
+  'SITE_DOMAIN'
+];
+
+const missing = requiredEnvs.filter((k) => !process.env[k]);
+if (missing.length > 0) {
+  console.warn(`Warning: Missing env vars: ${missing.join(', ')}. App will still start but some features may fail.`);
+}
+
+// --- FIREBASE SETUP ---
+let serviceAccount;
+try {
+  if (process.env.FB_SERVICE_KEY) {
+    const decoded = Buffer.from(process.env.FB_SERVICE_KEY, 'base64').toString('utf8');
+    // If you want to debug the decoded json locally uncomment next line (don't log in production)
+    // console.log('Decoded FB service account (first 200 chars):', decoded.slice(0, 200));
+    serviceAccount = JSON.parse(decoded);
+    admin.initializeApp({
+      credential: admin.credential.cert(serviceAccount)
+    });
+    console.log('Firebase admin initialized');
+  } else {
+    console.warn('FB_SERVICE_KEY is not set. Firebase admin not initialized.');
+  }
+} catch (err) {
+  console.error('Failed to parse FB_SERVICE_KEY. Make sure it is the base64 of a valid service account JSON.', err);
+  // do not throw so app can still run for non-firebase routes if needed
+}
+
+// Verify token middleware (works only if firebase admin initialized)
 const verifyFireBaseToken = async (req, res, next) => {
   const token = req.headers.authorization;
   if (!token) {
     return res.status(401).send({ message: 'unauthorized access' });
+  }
+  if (!admin.apps.length) {
+    return res.status(500).send({ message: 'Firebase admin not initialized on server' });
   }
   try {
     const idToken = token.split(' ')[1];
@@ -48,14 +79,16 @@ const client = new MongoClient(uri, {
 async function run() {
   try {
     await client.connect();
-    console.log("MongoDB Connected!");
-    const database = client.db("myDB");
-    const userCollection = database.collection("users");
-    const booksCollection = database.collection("books");
-    const ordersCollection = database.collection("orders");
+    console.log('MongoDB Connected!');
+    const database = client.db('myDB');
+    const userCollection = database.collection('users');
+    const booksCollection = database.collection('books');
+    const ordersCollection = database.collection('orders');
+
+    // NOTE: per your server-deploy.md - comment out heavy admin pings that cause gateway timeouts.
+
 
     // --- USER ROUTES ---
-
     app.get('/users', verifyFireBaseToken, async (req, res) => {
       const result = await userCollection.find().toArray();
       res.send(result);
@@ -66,25 +99,25 @@ async function run() {
         const email = req.params.email;
         const user = await userCollection.findOne({ email });
         if (!user) {
-          return res.status(404).send({ message: "User not found", role: null });
+          return res.status(404).send({ message: 'User not found', role: null });
         }
-        res.send({ role: user.role || "user" });
+        res.send({ role: user.role || 'user' });
       } catch (error) {
-        res.status(500).send({ message: "Internal Server Error" });
+        res.status(500).send({ message: 'Internal Server Error' });
       }
     });
 
-    app.post("/users", async (req, res) => {
+    app.post('/users', async (req, res) => {
       try {
         const newUser = req.body;
         const exists = await userCollection.findOne({ email: newUser.email });
         if (exists) {
-          return res.send({ message: "User already exists", insertedId: null });
+          return res.send({ message: 'User already exists', insertedId: null });
         }
         const result = await userCollection.insertOne(newUser);
         res.send(result);
       } catch (error) {
-        res.status(500).send({ message: "Internal server error" });
+        res.status(500).send({ message: 'Internal server error' });
       }
     });
 
@@ -127,7 +160,7 @@ async function run() {
         const result = await booksCollection.find(query).sort({ date: -1 }).toArray();
         res.send(result);
       } catch (error) {
-        res.status(500).send({ message: "Error fetching books" });
+        res.status(500).send({ message: 'Error fetching books' });
       }
     });
 
@@ -143,7 +176,7 @@ async function run() {
       const query = { _id: new ObjectId(id) };
       const result = await booksCollection.deleteOne(query);
       if (result.deletedCount === 0) {
-        return res.status(404).send({ message: "Book Not Found" });
+        return res.status(404).send({ message: 'Book Not Found' });
       }
       res.send(result);
     });
@@ -169,7 +202,7 @@ async function run() {
         const result = await booksCollection.updateOne(filter, updateDoc);
         res.send(result);
       } catch (error) {
-        res.status(500).send({ message: "Failed to update book" });
+        res.status(500).send({ message: 'Failed to update book' });
       }
     });
 
@@ -185,7 +218,8 @@ async function run() {
       const result = await ordersCollection.find(query, options).toArray();
       res.send(result);
     });
-    //PAYMENT CHECKOUT
+
+    // PAYMENT CHECKOUT
     app.post('/payment-checkout-session', async (req, res) => {
       const orderInfo = req.body;
       const price = parseInt(orderInfo.price) * 100;
@@ -205,21 +239,19 @@ async function run() {
               quantity: 1
             }
           ],
-
           customer_email: orderInfo.email,
           mode: 'payment',
           metadata: {
             orderId: orderInfo._id.toString(),
             userEmail: orderInfo.email
           },
-
           success_url: `${process.env.SITE_DOMAIN}/dashboard/payment-success?session_id={CHECKOUT_SESSION_ID}`,
           cancel_url: `${process.env.SITE_DOMAIN}/dashboard/payment-cancel`
         });
         res.send({ url: session.url });
       } catch (error) {
         console.error(error);
-        res.status(500).send({ message: "Stripe session failed" });
+        res.status(500).send({ message: 'Stripe session failed' });
       }
     });
 
@@ -228,23 +260,24 @@ async function run() {
       const session = await stripe.checkout.sessions.retrieve(session_id);
 
       if (session.payment_status === 'paid') {
-        const id = session.metadata.orderId
-        const transactionId = session.payment_intent
-        const query = { _id: new ObjectId(id) }
+        const id = session.metadata.orderId;
+        const transactionId = session.payment_intent;
+        const query = { _id: new ObjectId(id) };
         const update = {
           $set: {
             payment_status: 'paid',
             transactionId: transactionId,
             paymentDate: new Date()
-
           }
-        }
-        const result = ordersCollection.updateOne(query, update)
-        res.send(result)
+        };
+        const result = await ordersCollection.updateOne(query, update);
+        res.send(result);
+        return;
       }
-      res.send({ success: false })
-    })
-    //ivoice
+      res.send({ success: false });
+    });
+
+    // invoice / payments
     app.get('/payments', async (req, res) => {
       const email = req.query.email;
       const query = {
@@ -272,7 +305,7 @@ async function run() {
         email: newOrder.email,
       });
       if (exists) {
-        return res.send({ message: "You have already ordered this book", insertedId: null });
+        return res.send({ message: 'You have already ordered this book', insertedId: null });
       }
       const result = await ordersCollection.insertOne(newOrder);
       res.send(result);
@@ -283,47 +316,47 @@ async function run() {
       const query = { _id: new ObjectId(id) };
       const result = await ordersCollection.deleteOne(query);
       if (result.deletedCount === 0) {
-        return res.status(404).send({ message: "Order Not Found" });
+        return res.status(404).send({ message: 'Order Not Found' });
       }
-      res.send({ message: "Order Deleted Successfully", deletedId: id });
+      res.send({ message: 'Order Deleted Successfully', deletedId: id });
     });
 
     app.patch('/orders/cancel/:id', verifyFireBaseToken, async (req, res) => {
       const id = req.params.id;
       const order = await ordersCollection.findOne({ _id: new ObjectId(id) });
       if (!order) {
-        return res.status(404).send({ message: "Order not found" });
+        return res.status(404).send({ message: 'Order not found' });
       }
       if (req.decoded_email !== order.email) {
         return res.status(403).send({ message: 'Forbidden access' });
       }
       if (order.status !== 'pending') {
-        return res.status(400).send({ message: "Only pending orders can be cancelled" });
+        return res.status(400).send({ message: 'Only pending orders can be cancelled' });
       }
       const result = await ordersCollection.updateOne(
         { _id: new ObjectId(id) },
         { $set: { status: 'cancelled' } }
       );
-      res.send({ message: "Order cancelled successfully" });
+      res.send({ message: 'Order cancelled successfully' });
     });
 
-    //librarian orders 
+    // librarian orders
     app.get('/librarian-orders/:author', verifyFireBaseToken, async (req, res) => {
       try {
         const author = req.params.author;
         if (!req.decoded_email) {
-          return res.status(401).send({ message: "Unauthorized" });
+          return res.status(401).send({ message: 'Unauthorized' });
         }
         const query = { author: author };
-
         const result = await ordersCollection.find(query).sort({ date: -1 }).toArray();
         res.send(result);
       } catch (error) {
         console.error(error);
-        res.status(500).send({ message: "Server error" });
+        res.status(500).send({ message: 'Server error' });
       }
     });
-    //Order Status 
+
+    // Order Status
     app.patch('/orders/status/:id', verifyFireBaseToken, async (req, res) => {
       const id = req.params.id;
       const { status } = req.body;
@@ -341,33 +374,40 @@ async function run() {
     app.get('/stats', verifyFireBaseToken, async (req, res) => {
       try {
         const totalUsers = await userCollection.countDocuments();
-        const admins = await userCollection.countDocuments({ role: "admin" });
-        const librarians = await userCollection.countDocuments({ role: "librarian" });
-        const users = await userCollection.countDocuments({ role: "user" });
+        const admins = await userCollection.countDocuments({ role: 'admin' });
+        const librarians = await userCollection.countDocuments({ role: 'librarian' });
+        const users = await userCollection.countDocuments({ role: 'user' });
         const books = await booksCollection.countDocuments();
         const totalOrders = await ordersCollection.countDocuments();
-        const pendingOrders = await ordersCollection.countDocuments({ status: "pending" });
-        const cancelledOrders = await ordersCollection.countDocuments({ status: "cancelled" });
-        const completedOrders = await ordersCollection.countDocuments({ status: "completed" });
+        const pendingOrders = await ordersCollection.countDocuments({ status: 'pending' });
+        const cancelledOrders = await ordersCollection.countDocuments({ status: 'cancelled' });
+        const completedOrders = await ordersCollection.countDocuments({ status: 'completed' });
         res.send({
           totalUsers, admins, librarians, users, books, totalOrders, pendingOrders, cancelledOrders, completedOrders
         });
       } catch (error) {
-        res.status(500).send({ message: "Failed to load admin stats" });
+        res.status(500).send({ message: 'Failed to load admin stats' });
       }
     });
-
   } finally {
-
+    // DO NOT close the client here for server usage.
+    // await client.close(); // keep connection open for server lifetime
   }
 }
 
-run().catch(console.dir);
+run().catch((err) => {
+  console.error('Failed to run server initialization:', err);
+});
+
 
 app.get('/', (req, res) => {
-  res.send('Server IS Deployed!')
-})
+  res.send('Server IS Deployed!');
+});
 
-app.listen(port, () => {
-  console.log(`Example app listening on port ${port}`)
-})
+if (process.env.VERCEL) {
+  module.exports = app;
+} else {
+  app.listen(port, () => {
+    console.log(`Example app listening on port ${port}`);
+  });
+}
