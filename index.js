@@ -2,7 +2,6 @@ require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
 const stripe = require('stripe')(process.env.STRIPE_SECRET_KEY);
-console.log("Stripe Key Check:", process.env.STRIPE_SECRET_KEY);
 const { MongoClient, ObjectId, ServerApiVersion } = require('mongodb');
 const admin = require("firebase-admin");
 
@@ -12,8 +11,11 @@ const port = process.env.PORT || 5000;
 app.use(cors());
 app.use(express.json());
 
-// --- FIREBASE SETUP ---
-const serviceAccount = require("./firebase-adminsdk.json");
+// --- FIREBASE SETUP --- 
+// const serviceAccount = require("./firebase-admin-key.json");
+
+const decoded = Buffer.from(process.env.FB_SERVICE_KEY, 'base64').toString('utf8')
+const serviceAccount = JSON.parse(decoded);
 admin.initializeApp({
   credential: admin.credential.cert(serviceAccount)
 });
@@ -243,6 +245,7 @@ async function run() {
       }
       res.send({ success: false })
     })
+    //ivoice
     app.get('/payments', async (req, res) => {
       const email = req.query.email;
       const query = {
@@ -259,7 +262,6 @@ async function run() {
       const result = await ordersCollection.findOne(query);
       res.send(result);
     });
-
 
     app.post('/orders', verifyFireBaseToken, async (req, res) => {
       const newOrder = req.body;
@@ -304,6 +306,36 @@ async function run() {
         { $set: { status: 'cancelled' } }
       );
       res.send({ message: "Order cancelled successfully" });
+    });
+
+    //librarian orders 
+    app.get('/librarian-orders/:author', verifyFireBaseToken, async (req, res) => {
+      try {
+        const author = req.params.author;
+        if (!req.decoded_email) {
+          return res.status(401).send({ message: "Unauthorized" });
+        }
+        const query = { author: author };
+
+        const result = await ordersCollection.find(query).sort({ date: -1 }).toArray();
+        res.send(result);
+      } catch (error) {
+        console.error(error);
+        res.status(500).send({ message: "Server error" });
+      }
+    });
+    //Order Status 
+    app.patch('/orders/status/:id', verifyFireBaseToken, async (req, res) => {
+      const id = req.params.id;
+      const { status } = req.body;
+      const filter = { _id: new ObjectId(id) };
+      const updateDoc = {
+        $set: {
+          status: status
+        },
+      };
+      const result = await ordersCollection.updateOne(filter, updateDoc);
+      res.send(result);
     });
 
     // --- STATS ---
