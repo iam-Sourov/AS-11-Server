@@ -13,6 +13,14 @@ app.use(cors());
 app.use(express.json());
 
 
+app.use(cors({
+  origin: [
+    "http://localhost:5173",
+    process.env.SITE_DOMAIN, // REPLACE with your actual deployed Frontend URL
+  ],
+  credentials: true // Crucial if you are sending cookies or authorization headers
+}));
+
 const requiredEnvs = [
   'FB_SERVICE_KEY',
   'DB_USERNAME',
