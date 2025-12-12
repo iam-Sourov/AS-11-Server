@@ -8,17 +8,15 @@ const admin = require('firebase-admin');
 const app = express();
 const port = process.env.PORT || 5000;
 
-// Basic middleware
+
 app.use(express.json());
 
-// If you have a frontend domain, set it via SITE_DOMAIN or FRONTEND_ORIGIN env var
 const allowedOrigin = process.env.FRONTEND_ORIGIN || process.env.SITE_DOMAIN || '*';
 app.use(cors({
   origin: allowedOrigin === '*' ? true : allowedOrigin,
   credentials: true
 }));
 
-// --- FIREBASE ADMIN INITIALIZATION (from base64 in env) ---
 try {
   if (!process.env.FB_SERVICE_KEY) {
     console.warn('FB_SERVICE_KEY not set. Firebase Admin will not initialize.');
