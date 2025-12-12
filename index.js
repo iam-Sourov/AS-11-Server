@@ -11,11 +11,17 @@ const port = process.env.PORT || 5000;
 
 app.use(express.json());
 
-const allowedOrigin = process.env.FRONTEND_ORIGIN || process.env.SITE_DOMAIN || '*';
-app.use(cors({
-  origin: allowedOrigin === '*' ? true : allowedOrigin,
-  credentials: true
-}));
+const corsOptions = {
+  origin: [
+    process.env.SITE_DOMAIN,
+    process.env.FRONTEND_ORIGIN,
+    'http://localhost:5173'
+  ],
+  credentials: true,
+  optionSuccessStatus: 200,
+};
+
+app.use(cors(corsOptions));
 
 try {
   if (!process.env.FB_SERVICE_KEY) {
