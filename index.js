@@ -7,9 +7,8 @@ const admin = require('firebase-admin');
 
 const app = express();
 const port = process.env.PORT || 5000;
-
-
 app.use(express.json());
+
 
 const corsOptions = {
   origin: [
@@ -20,7 +19,6 @@ const corsOptions = {
   credentials: true,
   optionSuccessStatus: 200,
 };
-
 app.use(cors(corsOptions));
 
 try {
@@ -38,7 +36,7 @@ try {
   console.error('Failed to initialize Firebase Admin:', err);
 }
 
-// --- VERIFY FIREBASE TOKEN MIDDLEWARE ---
+
 const verifyFireBaseToken = async (req, res, next) => {
   const tokenHeader = req.headers.authorization;
   if (!tokenHeader) {
@@ -58,7 +56,6 @@ const verifyFireBaseToken = async (req, res, next) => {
   }
 };
 
-// --- MONGODB SETUP ---
 const username = encodeURIComponent(process.env.DB_USERNAME || '');
 const password = encodeURIComponent(process.env.DB_PASSWORD || '');
 const cluster = process.env.DB_CLUSTER || 'mystic.fupfbwc.mongodb.net';
@@ -81,7 +78,11 @@ async function run() {
     const booksCollection = client.db("myDB").collection("books");
     const ordersCollection = client.db("myDB").collection("orders");
     const wishlistCollection = client.db("myDB").collection("wishlist");
-    // USERS
+    const reviewsCollection = client.db("myDB").collection("reviews");
+
+
+    // USERS Section
+    //Get All Users
     app.get('/users', verifyFireBaseToken, async (req, res) => {
       try {
         const result = await userCollection.find().toArray();
@@ -91,6 +92,7 @@ async function run() {
         res.status(500).send({ message: 'Failed to fetch users' });
       }
     });
+    //Get User By Role
     app.get('/users/role/:email', async (req, res) => {
       try {
         const email = req.params.email;
@@ -102,7 +104,7 @@ async function run() {
         res.status(500).send({ message: 'Internal Server Error' });
       }
     });
-
+    //Post User
     app.post('/users', async (req, res) => {
       try {
         const newUser = req.body;
@@ -116,7 +118,7 @@ async function run() {
         res.status(500).send({ message: 'Internal server error' });
       }
     });
-
+    //Patch User By Email
     app.patch('/users/update/:email', verifyFireBaseToken, async (req, res) => {
       try {
         const email = req.params.email;
@@ -130,7 +132,9 @@ async function run() {
       }
     });
 
-    // BOOKS
+
+    // BOOKS Section
+    //Get All Books
     app.get('/books', async (req, res) => {
       try {
         const result = await booksCollection.find().sort({ price_USD: -1 }).toArray();
@@ -140,7 +144,7 @@ async function run() {
         res.status(500).send({ message: 'Failed to fetch books' });
       }
     });
-
+    //Get Book By Author
     app.get('/books/:author', async (req, res) => {
       try {
         const authorName = req.params.author;
@@ -152,7 +156,7 @@ async function run() {
         res.status(500).send({ message: 'Error fetching books' });
       }
     });
-
+    //Post Book
     app.post('/books', verifyFireBaseToken, async (req, res) => {
       try {
         const newBook = req.body;
@@ -164,7 +168,7 @@ async function run() {
         res.status(500).send({ message: 'Failed to add book' });
       }
     });
-
+    //Delete Book By Id
     app.delete('/books/:id', verifyFireBaseToken, async (req, res) => {
       try {
         const id = req.params.id;
@@ -177,7 +181,7 @@ async function run() {
         res.status(500).send({ message: 'Failed to delete book' });
       }
     });
-
+    //Patch Book By Id
     app.patch('/books/:id', verifyFireBaseToken, async (req, res) => {
       try {
         const id = req.params.id;
@@ -193,7 +197,7 @@ async function run() {
         res.status(500).send({ message: 'Failed to update book' });
       }
     });
-
+    //Patch Book Status By Id
     app.patch('/books/status/:id', verifyFireBaseToken, async (req, res) => {
       try {
         const id = req.params.id;
@@ -210,7 +214,9 @@ async function run() {
       }
     });
 
-    // ORDERS
+
+    // ORDERS Section
+    //Get Order
     app.get('/orders', verifyFireBaseToken, async (req, res) => {
       try {
         const query = {};
@@ -225,44 +231,7 @@ async function run() {
         res.status(500).send({ message: 'Failed to fetch orders' });
       }
     });
-
     // Stripe checkout session
-    app.post('/payment-checkout-session', async (req, res) => {
-      try {
-        const orderInfo = req.body;
-        if (!stripe) return res.status(500).send({ message: 'Stripe not configured' });
-        const price = parseFloat(orderInfo.price) * 100;
-        const session = await stripe.checkout.sessions.create({
-          payment_method_types: ['card'],
-          line_items: [
-            {
-              price_data: {
-                currency: 'usd',
-                product_data: {
-                  name: orderInfo.bookTitle,
-                  images: orderInfo.image ? [orderInfo.image] : []
-                },
-                unit_amount: Math.round(price)
-              },
-              quantity: 1
-            }
-          ],
-          customer_email: orderInfo.email,
-          mode: 'payment',
-          metadata: {
-            orderId: orderInfo._id?.toString() || '',
-            userEmail: orderInfo.email
-          },
-          success_url: `${process.env.SITE_DOMAIN || ''}/dashboard/payment-success?session_id={CHECKOUT_SESSION_ID}`,
-          cancel_url: `${process.env.SITE_DOMAIN || ''}/dashboard/payment-cancel`
-        });
-        res.send({ url: session.url });
-      } catch (err) {
-        console.error('Stripe session failed:', err);
-        res.status(500).send({ message: 'Stripe session failed' });
-      }
-    });
-
     app.patch('/payment-success', async (req, res) => {
       try {
         const session_id = req.query.session_id;
@@ -288,7 +257,7 @@ async function run() {
         res.status(500).send({ message: 'Failed to record payment' });
       }
     });
-
+    //Get Order Payment
     app.get('/payments', async (req, res) => {
       try {
         const email = req.query.email;
@@ -300,7 +269,7 @@ async function run() {
         res.status(500).send({ message: 'Failed to fetch payments' });
       }
     });
-
+    //Get OrderBy Id
     app.get('/orders/:id', async (req, res) => {
       try {
         const id = req.params.id;
@@ -312,7 +281,7 @@ async function run() {
         res.status(500).send({ message: 'Failed to fetch order' });
       }
     });
-
+    //Post Order
     app.post('/orders', verifyFireBaseToken, async (req, res) => {
       try {
         const newOrder = req.body;
@@ -326,7 +295,7 @@ async function run() {
         res.status(500).send({ message: 'Failed to create order' });
       }
     });
-
+    //Delete Order By Id
     app.delete('/orders/:id', verifyFireBaseToken, async (req, res) => {
       try {
         const id = req.params.id;
@@ -339,7 +308,7 @@ async function run() {
         res.status(500).send({ message: 'Failed to delete order' });
       }
     });
-
+    //Patch Cancel Order By Id
     app.patch('/orders/cancel/:id', verifyFireBaseToken, async (req, res) => {
       try {
         const id = req.params.id;
@@ -354,7 +323,7 @@ async function run() {
         res.status(500).send({ message: 'Failed to cancel order' });
       }
     });
-
+    //Get Librarian Order By Author
     app.get('/librarian-orders/:author', verifyFireBaseToken, async (req, res) => {
       try {
         const author = req.params.author;
@@ -366,7 +335,7 @@ async function run() {
         res.status(500).send({ message: 'Server error' });
       }
     });
-
+    //Patch Order Status By Id
     app.patch('/orders/status/:id', verifyFireBaseToken, async (req, res) => {
       try {
         const id = req.params.id;
@@ -381,7 +350,8 @@ async function run() {
       }
     });
 
-    // STATS
+
+    // STATS Section
     app.get('/stats', verifyFireBaseToken, async (req, res) => {
       try {
         const totalUsers = await userCollection.countDocuments();
@@ -401,7 +371,10 @@ async function run() {
         res.status(500).send({ message: 'Failed to load admin stats' });
       }
     });
-    //WISHLIST
+
+
+    //WISHLIST Section
+    //Post Wishlist
     app.post('/wishlist', async (req, res) => {
       const wishlistItem = req.body;
       const bookId = wishlistItem.bookId
@@ -414,14 +387,14 @@ async function run() {
       const result = await wishlistCollection.insertOne(wishlistItem);
       res.send(result);
     });
-
+    //Get Wishlist
     app.get('/wishlist', async (req, res) => {
       const email = req.query.email;
       const query = { userEmail: email };
       const result = await wishlistCollection.find(query).toArray();
       res.send(result);
     });
-
+    //Delete Wishlist By Id
     app.delete('/wishlist/:id', async (req, res) => {
       const id = req.params.id;
       const query = { _id: new ObjectId(id) };
@@ -430,6 +403,48 @@ async function run() {
     });
     app.listen(port, () => {
       console.log(`Server running on port ${port}`);
+    });
+
+
+    //Reviews Section
+    app.post('/reviews', async (req, res) => {
+      try {
+        const review = req.body;
+        if (req.decoded_email !== review.userEmail) {
+          return res.status(403).send({ message: 'Forbidden access' });
+        }
+        const query = {
+          bookId: review.bookId,
+          email: review.userEmail,
+          status: 'delivered'
+        };
+        const hasPurchased = await ordersCollection.findOne(query);
+        if (!hasPurchased) {
+          return res.status(403).send({ message: 'You can only review books you have purchased and received.' });
+        }
+        const existingReview = await reviewsCollection.findOne({
+          bookId: review.bookId,
+          userEmail: review.userEmail
+        });
+        if (existingReview) {
+          return res.status(409).send({ message: 'You have already reviewed this book.' });
+        }
+        review.date = new Date();
+        const result = await reviewsCollection.insertOne(review);
+        res.send(result);
+      } catch (err) {
+        console.error(err);
+        res.status(500).send({ message: 'Failed to submit review' });
+      }
+    });
+    app.get('/reviews/:bookId', async (req, res) => {
+      try {
+        const bookId = req.params.bookId;
+        const result = await reviewsCollection.find({ bookId }).sort({ date: -1 }).toArray();
+        res.send(result);
+      } catch (err) {
+        res.status(500).send({ message: 'Failed to fetch reviews' });
+      }
     });
 
   } catch (e) {
