@@ -71,30 +71,16 @@ const client = new MongoClient(uri, {
     strict: true,
     deprecationErrors: true,
   },
-  // optionally increase timeouts if your host needs it
-  // socketTimeoutMS: 45000,
-  // connectTimeoutMS: 30000
 });
-
-// helper for graceful shutdown
 let isConnected = false;
 
 async function run() {
   try {
     await client.connect();
-    // ping to ensure connection established (helps hosts like Render)
-    await client.db('admin').command({ ping: 1 });
-    isConnected = true;
-    console.log('MongoDB Connected!');
-
-    const database = client.db('myDB');
-    const userCollection = database.collection('users');
-    const booksCollection = database.collection('books');
-    const ordersCollection = database.collection('orders');
-
-    // --- ROUTES ---
-    app.get('/', (req, res) => res.status(200).send('Server Running'));
-
+    const userCollection = client.db("myDB").collection("users");
+    const booksCollection = client.db("myDB").collection("books");
+    const ordersCollection = client.db("myDB").collection("orders");
+    const wishlistCollection = client.db("myDB").collection("wishlist");
     // USERS
     app.get('/users', verifyFireBaseToken, async (req, res) => {
       try {
@@ -105,7 +91,6 @@ async function run() {
         res.status(500).send({ message: 'Failed to fetch users' });
       }
     });
-
     app.get('/users/role/:email', async (req, res) => {
       try {
         const email = req.params.email;
@@ -416,8 +401,34 @@ async function run() {
         res.status(500).send({ message: 'Failed to load admin stats' });
       }
     });
+    //
+    app.post('/wishlist', async (req, res) => {
+      const wishlistItem = req.body;
+      const bookId = wishlistItem.bookId
+      const userEmail = wishlistItem.userEmail
+      const query = { bookId, userEmail };
+      const existingItem = await wishlistCollection.findOne(query);
+      if (existingItem) {
+        return res.status(409).send({ message: 'Book already in wishlist' });
+      }
+      const result = await wishlistCollection.insertOne(wishlistItem);
+      res.send(result);
+    });
 
-    // Start the server after everything initialized
+    app.get('/wishlist', async (req, res) => {
+      const email = req.query.email;
+      const query = { userEmail: email };
+      const result = await wishlistCollection.find(query).toArray();
+      res.send(result);
+    });
+
+    app.delete('/wishlist/:id', async (req, res) => {
+      const id = req.params.id;
+      const query = { _id: new ObjectId(id) };
+      const result = await wishlistCollection.deleteOne(query);
+      res.send(result);
+    });
+
     app.listen(port, () => {
       console.log(`Server running on port ${port}`);
     });
