@@ -401,7 +401,7 @@ async function run() {
         res.status(500).send({ message: 'Failed to load admin stats' });
       }
     });
-    //
+    //WISHLIST
     app.post('/wishlist', async (req, res) => {
       const wishlistItem = req.body;
       const bookId = wishlistItem.bookId
@@ -428,7 +428,6 @@ async function run() {
       const result = await wishlistCollection.deleteOne(query);
       res.send(result);
     });
-
     app.listen(port, () => {
       console.log(`Server running on port ${port}`);
     });
@@ -444,7 +443,6 @@ run().catch(err => {
   process.exit(1);
 });
 
-// Graceful shutdown
 process.on('SIGINT', async () => {
   console.log('SIGINT received, shutting down');
   if (isConnected) await client.close();
