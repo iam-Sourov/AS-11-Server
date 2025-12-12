@@ -266,7 +266,7 @@ async function run() {
         res.status(500).send({ message: "Stripe session failed" });
       }
     });
-
+    //update status
     app.patch('/payment-success', async (req, res) => {
       try {
         const session_id = req.query.session_id;
